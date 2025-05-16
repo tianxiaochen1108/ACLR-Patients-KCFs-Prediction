@@ -33,9 +33,9 @@ final_df = pd.DataFrame(all_series).T
 # Target Processing
 y_df = pd.read_excel('./TestData.xlsx', sheet_name=y_sheet_names, header=None)
 input_data = final_df.values
-output_data = np.array(y_df['膝关节接触力'].T).reshape(-1, 1)
+output_data = np.array(y_df['KCF'].T).reshape(-1, 1)
 
-print(f"输入维度: {input_data.shape}, 输出维度: {output_data.shape}")
+print(f"Input Dimension: {input_data.shape}, Output Dimension: {output_data.shape}")
 
 # Random seed setting
 seed_value = 42
@@ -91,8 +91,8 @@ results = {
     'train_loss': [], 'val_loss': [], 'r2': [],
     'mae': [], 'mape': [], 'y_true': [], 'y_pred': []
 }
-all_true = np.zeros(output_data.shape[0])  # 全量真实值存储
-all_pred = np.zeros(output_data.shape[0])  # 全量预测值存储
+all_true = np.zeros(output_data.shape[0])  # full real values storage
+all_pred = np.zeros(output_data.shape[0])  # full prediction values storage
 
 for fold, (train_idx, val_idx) in enumerate(kf.split(input_data)):
     print(f"\n=== Fold {fold+1}/{n_splits} ===")
@@ -221,7 +221,7 @@ pd.DataFrame(results['train_loss']).T.to_csv('attention_cnn_gru_train_loss.csv',
 pd.DataFrame(results['val_loss']).T.to_csv('attention_cnn_gru_val_loss.csv', index=False)
 
 # Results Calibration
-print("\n=== 交叉验证结果 ===")
+print("\n=== Cross-Validation Result ===")
 print(f"平均R²: {np.mean(results['r2']):.4f} (±{np.std(results['r2']):.4f})")
 print(f"平均MAE: {np.mean(results['mae']):.4f} (±{np.std(results['mae']):.4f})")
 print(f"平均MAPE: {np.mean(results['mape']):.2f}% (±{np.std(results['mape']):.2f}%)")
