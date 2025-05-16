@@ -12,7 +12,7 @@ import shap
 import warnings
 warnings.filterwarnings('ignore')
 
-# 数据加载
+# Data Loading
 all_sheets = pd.read_excel('./TestData.xlsx', sheet_name=None, header=None)
 X_sheet_names, y_sheet_names = [], []
 i = 0
@@ -23,21 +23,21 @@ for sheet_name in all_sheets.keys():
     else:
         y_sheet_names.append(sheet_name)
 
-# 特征处理
+# Feature processing
 all_series = []
 for sheet_name in X_sheet_names:
     df = pd.read_excel('./TestData.xlsx', sheet_name=sheet_name, header=None)
     all_series.append(np.array(df.T).flatten())
 final_df = pd.DataFrame(all_series).T
 
-# 目标处理
+# Target Processing
 y_df = pd.read_excel('./TestData.xlsx', sheet_name=y_sheet_names, header=None)
 input_data = final_df.values
 output_data = np.array(y_df['膝关节接触力'].T).reshape(-1, 1)
 
 print(f"输入维度: {input_data.shape}, 输出维度: {output_data.shape}")
 
-# 随机种子设置
+# Random seed setting
 seed_value = 42
 torch.manual_seed(seed_value)
 np.random.seed(seed_value)
@@ -45,7 +45,7 @@ torch.cuda.manual_seed_all(seed_value)
 torch.backends.cudnn.deterministic = True
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# 模型定义
+# Model Definition
 class SelfAttention(nn.Module):
     def __init__(self, input_dim):
         super().__init__()
@@ -84,7 +84,7 @@ class AttentionCNNGRU(nn.Module):
         attended = self.attention(gru_out)
         return self.fc(attended[:, -1, :])
 
-# 交叉验证配置
+# cross-validation configuration
 n_splits = 10
 kf = KFold(n_splits=n_splits, shuffle=False)
 results = {
@@ -99,7 +99,7 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(input_data)):
     X_train, X_val = input_data[train_idx], input_data[val_idx]
     y_train, y_val = output_data[train_idx], output_data[val_idx]
     
-    # 数据标准化
+    # data normalization
     scaler_x = MinMaxScaler()
     scaler_y = MinMaxScaler()
     X_train_scaled = scaler_x.fit_transform(X_train)
@@ -107,20 +107,20 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(input_data)):
     y_train_scaled = scaler_y.fit_transform(y_train)
     y_val_scaled = scaler_y.transform(y_val)
     
-    # Tensor转换
+    # Tensor
     X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32).to(device)
     X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
     y_train_tensor = torch.tensor(y_train_scaled, dtype=torch.float32).squeeze().to(device)
     y_val_tensor = torch.tensor(y_val_scaled, dtype=torch.float32).squeeze().to(device)
     
-    # 数据加载器
+    # data loader
     batch_size = 256
     train_loader = DataLoader(TensorDataset(X_train_tensor, y_train_tensor), 
                             batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(TensorDataset(X_val_tensor, y_val_tensor),
                           batch_size=batch_size, shuffle=False)
     
-    # 模型初始化
+    # Model Initialization
     model = AttentionCNNGRU(
         input_size=X_train_tensor.shape[1],
         hidden_size=128,
@@ -129,7 +129,7 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(input_data)):
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.MSELoss()
     
-    # 训练循环
+    # training loop
     num_epochs = 200
     best_r2 = -np.inf
     fold_train_loss, fold_val_loss = [], []
@@ -146,7 +146,7 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(input_data)):
             epoch_loss += loss.item()
         fold_train_loss.append(epoch_loss/len(train_loader))
         
-        # 验证评估
+        # validation evaluation
         model.eval()
         val_preds, val_true = [], []
         with torch.no_grad():
@@ -168,33 +168,33 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(input_data)):
         if (epoch+1) % 10 == 0:
             print(f"Epoch {epoch+1}: Train Loss {fold_train_loss[-1]:.4f}, Val Loss {val_loss:.4f}, R² {r2:.4f}")
     
-    # 记录结果
+    # record results
     results['train_loss'].append(fold_train_loss)
     results['val_loss'].append(fold_val_loss)
     results['r2'].append(best_r2)
     
-    # 最终预测
+    # final prediction
     model.load_state_dict(torch.load(f"Attention_CNN_GRU_fold{fold+1}.pth"))
     model.eval()
     with torch.no_grad():
         y_pred = model(X_val_tensor).cpu().numpy()
     
-    # 反归一化
+    # inverse normalization
     y_pred = scaler_y.inverse_transform(y_pred.reshape(-1, 1))
     y_true = scaler_y.inverse_transform(y_val_scaled)
     
-    # 保存当前fold预测结果
+    # Save the current fold prediction results.
     fold_df = pd.DataFrame({
         'True': y_true.flatten(),
         'Pred': y_pred.flatten()
     })
     fold_df.to_csv(f'Attention_CNN_GRU_fold_{fold+1}_predictions.csv', index=False)
     
-    # 更新全量预测
+    # update full predictions
     all_true[val_idx] = y_true.flatten()
     all_pred[val_idx] = y_pred.flatten()
     
-    # 计算指标
+    # Metrics Calculation
     mae = mean_absolute_error(y_true, y_pred)
     mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-10))) * 100
     results['mae'].append(mae)
@@ -203,11 +203,11 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(input_data)):
     results['y_pred'].append(y_pred)
     print(f"Fold {fold+1} Metrics: R²={best_r2:.4f}, MAE={mae:.4f}, MAPE={mape:.2f}%")
 
-# ==== 结果保存 ====
-# 保存全量预测结果
+# ==== Result Saving ====
+# Saving All Prediction Resluts
 pd.DataFrame({'True': all_true, 'Pred': all_pred}).to_csv('Attention_CNN_GRU_all_predictions.csv', index=False)
 
-# 保存评估指标
+# Saving Validation Metrics
 metrics_df = pd.DataFrame({
     'Fold': [f'Fold {i+1}' for i in range(n_splits)],
     'R2': results['r2'],
@@ -216,17 +216,17 @@ metrics_df = pd.DataFrame({
 })
 metrics_df.to_csv('Attention_CNN_GRU_metrics.csv', index=False)
 
-# 保存训练曲线数据
+# Saving Training Curves Data
 pd.DataFrame(results['train_loss']).T.to_csv('attention_cnn_gru_train_loss.csv', index=False)
 pd.DataFrame(results['val_loss']).T.to_csv('attention_cnn_gru_val_loss.csv', index=False)
 
-# 结果汇总
+# Results Calibration
 print("\n=== 交叉验证结果 ===")
 print(f"平均R²: {np.mean(results['r2']):.4f} (±{np.std(results['r2']):.4f})")
 print(f"平均MAE: {np.mean(results['mae']):.4f} (±{np.std(results['mae']):.4f})")
 print(f"平均MAPE: {np.mean(results['mape']):.2f}% (±{np.std(results['mape']):.2f}%)")
 
-# 训练曲线可视化
+# Traing Curves Visualization
 plt.figure(figsize=(12, 6))
 for i in range(n_splits):
     plt.plot(results['train_loss'][i], alpha=0.3, label=f'Train Fold {i+1}')
@@ -239,7 +239,7 @@ plt.tight_layout()
 plt.savefig("Attention_CNN_GRU_loss_curves.png")
 plt.show()
 
-# 预测对比图
+# Results Comparison Curves
 plt.figure(figsize=(12, 6), dpi=150)
 plt.plot(results['y_true'][-1][-100:], 'r-', label='Actual')
 plt.plot(results['y_pred'][-1][-100:], 'b--', label='Predicted')
@@ -249,48 +249,3 @@ plt.legend()
 plt.title("Prediction Comparison (Last 100 Samples)")
 plt.savefig("Attention_CNN_GRU_prediction_comparison.png")
 plt.show()
-
-# ==== SHAP分析 ====
-# 使用最后一个fold的模型
-model.load_state_dict(torch.load(f"Attention_CNN_GRU_fold{n_splits}.pth"))
-model.eval()
-
-# 准备背景数据和测试数据
-background = X_train_tensor[:1000].to(device)  # 使用前1000个样本作为背景
-test_samples = X_val_tensor[:100].to(device)    # 分析前100个测试样本
-
-# 创建解释器
-explainer = shap.GradientExplainer(model, background)
-
-# 计算SHAP值
-with torch.enable_grad():
-    model.train()
-    shap_values = explainer.shap_values(test_samples)
-    model.eval()
-
-# 调整维度
-shap_values = np.array(shap_values).reshape(-1, input_data.shape[1])
-
-# 特征名称（根据实际情况修改）
-feature_names = [f'Feature_{i+1}' for i in range(input_data.shape[1])]
-
-# 保存SHAP摘要图
-plt.figure()
-shap.summary_plot(shap_values, test_samples.cpu().numpy(), feature_names=feature_names, show=False)
-plt.tight_layout()
-plt.savefig("Attention_CNN_GRU_SHAP_summary.png")
-plt.close()
-
-# 保存SHAP热力图
-plt.figure()
-shap.plots.heatmap(
-    shap.Explanation(
-        values=shap_values,
-        data=test_samples.cpu().numpy(),
-        feature_names=feature_names
-    ), 
-    show=False
-)
-plt.tight_layout()
-plt.savefig("Attention_CNN_GRU_SHAP_heatmap.png")
-plt.close()
